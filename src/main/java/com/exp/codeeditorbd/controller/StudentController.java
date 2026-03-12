@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/student")
@@ -47,5 +48,46 @@ public class StudentController {
             @AuthenticationPrincipal CustomUserDetails userDetails,
             @RequestBody CodeSubmissionDto dto) {
         return ResponseEntity.ok(studentService.submitCode(userDetails.getUser().getId(), dto));
+    }
+
+    @PostMapping("/attempts/{testId}/start")
+    public ResponseEntity<?> startAttempt(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @PathVariable UUID testId) {
+        try {
+            return ResponseEntity.ok(studentService.startAttempt(userDetails.getUser().getId(), testId));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(400).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/attempts/{testId}/submit")
+    public ResponseEntity<?> submitAttempt(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @PathVariable UUID testId) {
+        try {
+            return ResponseEntity.ok(studentService.submitAttempt(userDetails.getUser().getId(), testId));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(400).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PutMapping("/attempts/{testId}/questions/{questionId}/draft")
+    public ResponseEntity<Void> saveDraft(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @PathVariable UUID testId,
+            @PathVariable UUID questionId,
+            @RequestBody Map<String, String> body) {
+        studentService.saveDraft(userDetails.getUser().getId(), testId, questionId, body.get("code"));
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/attempts/{testId}/questions/{questionId}/draft")
+    public ResponseEntity<Map<String, String>> getDraft(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @PathVariable UUID testId,
+            @PathVariable UUID questionId) {
+        String code = studentService.getDraft(userDetails.getUser().getId(), testId, questionId);
+        return ResponseEntity.ok(Map.of("code", code));
     }
 }
