@@ -41,11 +41,13 @@ public class CodeExecutionService {
         }
 
         try {
-            Path tempDir = compileCode(submission.getCode());
-            if (tempDir == null) {
-                saveErrorResults(submission, testCases, "Compilation Error");
+            CompileResult compileResult = compileCode(submission.getCode());
+            if (!compileResult.success()) {
+                saveErrorResults(submission, testCases, "Compilation Error:\n" + compileResult.errorOutput());
                 return;
             }
+
+            Path tempDir = compileResult.tempDir();
 
             int passedCount = 0;
             for (TestCase tc : testCases) {
@@ -82,13 +84,15 @@ public class CodeExecutionService {
         String code = request.getCode();
 
         try {
-            Path tempDir = compileCode(code);
-            if (tempDir == null) {
+            CompileResult compileResult = compileCode(code);
+            if (!compileResult.success()) {
                 return CodeRunResponse.builder()
                         .status("COMPILATION_ERROR")
-                        .error("Compilation failed. Please check your code for syntax errors.")
+                        .error("Compilation failed:\n" + compileResult.errorOutput())
                         .build();
             }
+
+            Path tempDir = compileResult.tempDir();
 
             List<CodeRunResponse.TestCaseResult> results = new ArrayList<>();
 
@@ -134,7 +138,9 @@ public class CodeExecutionService {
 
     // ===== Private helpers =====
 
-    private Path compileCode(String code) throws IOException, InterruptedException {
+    private record CompileResult(boolean success, Path tempDir, String errorOutput) {}
+
+    private CompileResult compileCode(String code) throws IOException, InterruptedException {
         Path tempDir = Files.createTempDirectory("code-" + UUID.randomUUID());
         File sourceFile = new File(tempDir.toFile(), "Main.java");
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(sourceFile))) {
@@ -151,9 +157,29 @@ public class CodeExecutionService {
         if (!compiled || compileProcess.exitValue() != 0) {
             log.debug("Compilation failed: {}", compileOutput);
             cleanupDir(tempDir);
-            return null;
+            return new CompileResult(false, null, formatCompileOutput(compileOutput));
         }
-        return tempDir;
+        return new CompileResult(true, tempDir, null);
+    }
+    
+    private String formatCompileOutput(String rawOutput) {
+        if (rawOutput == null || rawOutput.trim().isEmpty()) return "Unknown compilation error.";
+        
+        // Remove file path from error since we use temporary file names internally, just show 'Main.java:Line'
+        String[] lines = rawOutput.split("\\r?\\n");
+        StringBuilder cleanError = new StringBuilder();
+        
+        for (String line : lines) {
+            // Javac output typically looks like: "Main.java:7: error: ';' expected"
+            // We just strip any directory paths if they happen to appear
+            if (line.contains("Main.java:")) {
+                String errorPart = line.substring(line.indexOf("Main.java:"));
+                cleanError.append(errorPart).append("\n");
+            } else {
+                cleanError.append(line).append("\n");
+            }
+        }
+        return cleanError.toString().trim();
     }
 
     private ExecutionResult runAgainstInput(Path tempDir, String input) throws IOException, InterruptedException {

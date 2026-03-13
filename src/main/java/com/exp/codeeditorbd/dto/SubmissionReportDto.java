@@ -14,6 +14,7 @@ import java.util.UUID;
 @NoArgsConstructor
 public class SubmissionReportDto {
     private UUID submissionId;
+    private UUID studentId;
     private String studentName;
     private String studentEmail;
     private String questionTitle;

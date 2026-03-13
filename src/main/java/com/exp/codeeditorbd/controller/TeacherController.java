@@ -1,6 +1,7 @@
 package com.exp.codeeditorbd.controller;
 
 import com.exp.codeeditorbd.dto.QuestionRequestDto;
+import com.exp.codeeditorbd.dto.StudentTestResultDto;
 import com.exp.codeeditorbd.dto.SubmissionReportDto;
 import com.exp.codeeditorbd.dto.TestEntityRequestDto;
 import com.exp.codeeditorbd.entity.Question;
@@ -55,8 +56,23 @@ public class TeacherController {
         return ResponseEntity.ok(teacherService.getTestQuestions(testId));
     }
 
+    /**
+     * Returns one aggregated row per student — best score per question, summed.
+     * Replaces the old per-submission flat list.
+     */
     @GetMapping("/tests/{testId}/results")
-    public ResponseEntity<List<SubmissionReportDto>> getTestResults(@PathVariable UUID testId) {
+    public ResponseEntity<List<StudentTestResultDto>> getTestResults(@PathVariable UUID testId) {
         return ResponseEntity.ok(teacherService.getTestResults(testId));
+    }
+
+    /**
+     * Returns the best submission per question for a specific student.
+     * Called by the expandable row in TestDetail.jsx.
+     */
+    @GetMapping("/tests/{testId}/students/{studentId}/results")
+    public ResponseEntity<List<SubmissionReportDto>> getStudentTestDetails(
+            @PathVariable UUID testId,
+            @PathVariable UUID studentId) {
+        return ResponseEntity.ok(teacherService.getStudentTestDetails(testId, studentId));
     }
 }
