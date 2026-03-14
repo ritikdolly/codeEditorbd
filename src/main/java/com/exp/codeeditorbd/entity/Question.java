@@ -53,6 +53,15 @@ public class Question {
     @Column(columnDefinition = "TEXT")
     private String constraints;
 
+    @Column(columnDefinition = "TEXT")
+    private String prefixCode;
+
+    @Column(columnDefinition = "TEXT")
+    private String suffixCode;
+
+    @Column(columnDefinition = "TEXT")
+    private String templateCode;
+
     @JsonManagedReference
     @OneToMany(mappedBy = "question", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default

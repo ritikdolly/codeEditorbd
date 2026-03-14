@@ -22,28 +22,31 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/student")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('STUDENT')")
 public class StudentController {
 
     private final StudentService studentService;
     private final CodeExecutionService codeExecutionService;
 
     @GetMapping("/tests/{testId}")
+    @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<TestEntity> getTestDetails(@PathVariable UUID testId) {
         return ResponseEntity.ok(studentService.getTestDetails(testId));
     }
 
     @GetMapping("/tests/{testId}/questions")
+    @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<List<Question>> getTestQuestions(@PathVariable UUID testId) {
         return ResponseEntity.ok(studentService.getTestQuestions(testId));
     }
 
     @PostMapping("/code/run")
+    @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<CodeRunResponse> runCode(@RequestBody CodeRunRequest request) {
         return ResponseEntity.ok(codeExecutionService.runCode(request));
     }
 
     @PostMapping("/submit")
+    @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<Submission> submitCode(
             @AuthenticationPrincipal CustomUserDetails userDetails,
             @RequestBody CodeSubmissionDto dto) {
@@ -51,6 +54,7 @@ public class StudentController {
     }
 
     @PostMapping("/attempts/{testId}/start")
+    @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<?> startAttempt(
             @AuthenticationPrincipal CustomUserDetails userDetails,
             @PathVariable UUID testId) {
@@ -62,6 +66,7 @@ public class StudentController {
     }
 
     @PostMapping("/attempts/{testId}/submit")
+    @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<?> submitAttempt(
             @AuthenticationPrincipal CustomUserDetails userDetails,
             @PathVariable UUID testId) {
@@ -73,6 +78,7 @@ public class StudentController {
     }
 
     @PutMapping("/attempts/{testId}/questions/{questionId}/draft")
+    @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<Void> saveDraft(
             @AuthenticationPrincipal CustomUserDetails userDetails,
             @PathVariable UUID testId,
@@ -83,6 +89,7 @@ public class StudentController {
     }
 
     @GetMapping("/attempts/{testId}/questions/{questionId}/draft")
+    @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<Map<String, String>> getDraft(
             @AuthenticationPrincipal CustomUserDetails userDetails,
             @PathVariable UUID testId,
