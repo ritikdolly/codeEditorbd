@@ -1,5 +1,6 @@
 package com.exp.codeeditorbd.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -12,5 +13,7 @@ import lombok.NoArgsConstructor;
 public class TestCaseDto {
     private String input;
     private String expectedOutput;
+    
+    @JsonProperty("isHidden")
     private boolean isHidden;
 }

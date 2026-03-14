@@ -52,6 +52,9 @@ public class TeacherService {
                 .inputFormat(dto.getInputFormat())
                 .outputFormat(dto.getOutputFormat())
                 .constraints(dto.getConstraints())
+                .prefixCode(dto.getPrefixCode())
+                .suffixCode(dto.getSuffixCode())
+                .templateCode(dto.getTemplateCode())
                 .teacher(teacher)
                 .build();
 

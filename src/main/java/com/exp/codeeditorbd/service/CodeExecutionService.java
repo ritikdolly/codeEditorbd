@@ -2,15 +2,18 @@ package com.exp.codeeditorbd.service;
 
 import com.exp.codeeditorbd.dto.CodeRunRequest;
 import com.exp.codeeditorbd.dto.CodeRunResponse;
+import com.exp.codeeditorbd.entity.Question;
 import com.exp.codeeditorbd.entity.Submission;
 import com.exp.codeeditorbd.entity.SubmissionResult;
 import com.exp.codeeditorbd.entity.TestCase;
+import com.exp.codeeditorbd.repository.QuestionRepository;
 import com.exp.codeeditorbd.repository.SubmissionRepository;
 import com.exp.codeeditorbd.repository.SubmissionResultRepository;
 import com.exp.codeeditorbd.repository.TestCaseRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import jakarta.annotation.PostConstruct;
 
 import java.io.*;
 import java.nio.file.Files;
@@ -28,6 +31,51 @@ public class CodeExecutionService {
     private final TestCaseRepository testCaseRepository;
     private final SubmissionResultRepository submissionResultRepository;
     private final SubmissionRepository submissionRepository;
+    private final QuestionRepository questionRepository;
+
+    @PostConstruct
+    public void initSandbox() {
+        log.info("Initializing Docker sandbox...");
+        try {
+            // Check if image exists
+            Process process = new ProcessBuilder("docker", "images", "-q", "java-sandbox").start();
+            String output = readStream(process.getInputStream()).trim();
+            
+            if (output.isEmpty()) {
+                log.info("java-sandbox image not found. Building it now...");
+                
+                // Use absolute path for build context
+                String projectRoot = new File("").getAbsolutePath();
+                File buildContext = new File(projectRoot, "docker-sandbox");
+                
+                if (!buildContext.exists()) {
+                    log.error("Docker build context NOT FOUND at: {}", buildContext.getAbsolutePath());
+                    return;
+                }
+
+                log.info("Building Docker image from: {}", buildContext.getAbsolutePath());
+                
+                ProcessBuilder buildPb = new ProcessBuilder("docker", "build", "-t", "java-sandbox", ".");
+                buildPb.directory(buildContext);
+                buildPb.redirectErrorStream(true); // Combine stdout and stderr
+                
+                Process buildProcess = buildPb.start();
+                String buildOutput = readStream(buildProcess.getInputStream());
+                boolean finished = buildProcess.waitFor(5, TimeUnit.MINUTES);
+                
+                if (finished && buildProcess.exitValue() == 0) {
+                    log.info("java-sandbox image built successfully.");
+                } else {
+                    log.error("Failed to build java-sandbox image. Exit code: {}. Output:\n{}", 
+                        buildProcess.exitValue(), buildOutput);
+                }
+            } else {
+                log.info("java-sandbox image already exists.");
+            }
+        } catch (Exception e) {
+            log.warn("Docker not found or not running. Sandbox features might fail. Error: {}", e.getMessage());
+        }
+    }
 
     // ===== Used for final SUBMIT: runs ALL test cases (including hidden) =====
     public void evaluateSubmission(Submission submission) {
@@ -41,7 +89,10 @@ public class CodeExecutionService {
         }
 
         try {
-            CompileResult compileResult = compileCode(submission.getCode());
+            Question question = submission.getQuestion();
+            String fullCode = assembleCode(question, submission.getCode());
+            
+            CompileResult compileResult = compileCode(fullCode);
             if (!compileResult.success()) {
                 saveErrorResults(submission, testCases, "Compilation Error:\n" + compileResult.errorOutput());
                 return;
@@ -84,7 +135,20 @@ public class CodeExecutionService {
         String code = request.getCode();
 
         try {
-            CompileResult compileResult = compileCode(code);
+            String fullCode = code;
+            if (request.getQuestionId() != null) {
+                try {
+                    UUID qId = UUID.fromString(request.getQuestionId());
+                    Question question = questionRepository.findById(qId).orElse(null);
+                    if (question != null) {
+                        fullCode = assembleCode(question, code);
+                    }
+                } catch (Exception e) {
+                    log.warn("Invalid question ID in CodeRunRequest: {}", request.getQuestionId());
+                }
+            }
+
+            CompileResult compileResult = compileCode(fullCode);
             if (!compileResult.success()) {
                 return CodeRunResponse.builder()
                         .status("COMPILATION_ERROR")
@@ -138,6 +202,18 @@ public class CodeExecutionService {
 
     // ===== Private helpers =====
 
+    private String assembleCode(Question question, String studentCode) {
+        StringBuilder fullCode = new StringBuilder();
+        if (question.getPrefixCode() != null && !question.getPrefixCode().trim().isEmpty()) {
+            fullCode.append(question.getPrefixCode()).append("\n");
+        }
+        fullCode.append(studentCode);
+        if (question.getSuffixCode() != null && !question.getSuffixCode().trim().isEmpty()) {
+            fullCode.append("\n").append(question.getSuffixCode());
+        }
+        return fullCode.toString();
+    }
+
     private record CompileResult(boolean success, Path tempDir, String errorOutput) {}
 
     private CompileResult compileCode(String code) throws IOException, InterruptedException {
@@ -147,7 +223,7 @@ public class CodeExecutionService {
             writer.write(code);
         }
 
-        ProcessBuilder compilePb = new ProcessBuilder("javac", "Main.java");
+        ProcessBuilder compilePb = new ProcessBuilder("javac", "--release", "17", "Main.java");
         compilePb.directory(tempDir.toFile());
         compilePb.redirectErrorStream(true);
         Process compileProcess = compilePb.start();
@@ -183,32 +259,59 @@ public class CodeExecutionService {
     }
 
     private ExecutionResult runAgainstInput(Path tempDir, String input) throws IOException, InterruptedException {
-        ProcessBuilder execPb = new ProcessBuilder("java", "-Xmx64m", "-Xms16m", "Main");
-        execPb.directory(tempDir.toFile());
+        // Use Docker for execution
+        String absolutePath = tempDir.toAbsolutePath().toString();
+        
+        // docker run --rm -i --memory=64m --cpus=0.5 --network none -v "PATH:/home/sandbox/app" java-sandbox java -cp /home/sandbox/app Main
+        // Note: We mount the temp dir to the sandbox user's home or a subfolder.
+        // On Windows, absolute paths need careful handling with Docker.
+        
+        List<String> command = new ArrayList<>(List.of(
+            "docker", "run", "--rm", "-i",
+            "--memory=128m",
+            "--cpus=0.5",
+            "--network", "none",
+            "-v", absolutePath + ":/home/sandbox/app",
+            "java-sandbox",
+            "java", "-cp", "/home/sandbox/app", "Main"
+        ));
+
+        ProcessBuilder execPb = new ProcessBuilder(command);
         Process execProcess = execPb.start();
 
         // Send input
-        try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(execProcess.getOutputStream()))) {
-            if (input != null) {
+        if (input != null && !input.isEmpty()) {
+            try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(execProcess.getOutputStream()))) {
                 writer.write(input);
-                writer.newLine();
+                writer.flush();
             }
+        } else {
+            execProcess.getOutputStream().close();
         }
 
-        boolean finished = execProcess.waitFor(5, TimeUnit.SECONDS);
+        boolean finished = execProcess.waitFor(10, TimeUnit.SECONDS);
         if (!finished) {
             execProcess.destroyForcibly();
-            return new ExecutionResult(false, "", "Time Limit Exceeded (5s)");
+            // runCommandAsync("docker ps -l -q | xargs -r docker kill"); // Linux-specific
+            return new ExecutionResult(false, "", "Time Limit Exceeded (10s)");
         }
 
         String output = readStream(execProcess.getInputStream()).trim();
         String error = readStream(execProcess.getErrorStream()).trim();
 
-        if (execProcess.exitValue() != 0 && !error.isEmpty()) {
-            return new ExecutionResult(false, output, "Runtime Error:\n" + error);
+        if (execProcess.exitValue() != 0) {
+            return new ExecutionResult(false, output, error.isEmpty() ? "Execution failed with exit code " + execProcess.exitValue() : "Runtime Error:\n" + error);
         }
 
         return new ExecutionResult(true, output, null);
+    }
+
+    private void runCommandAsync(String cmd) {
+        new Thread(() -> {
+            try {
+                Runtime.getRuntime().exec(cmd);
+            } catch (Exception ignored) {}
+        }).start();
     }
 
     private void saveErrorResults(Submission submission, List<TestCase> testCases, String error) {

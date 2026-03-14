@@ -33,5 +33,6 @@ public class TestCase {
     private String expectedOutput;
 
     @Column(name = "is_hidden", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonProperty("isHidden")
     private boolean isHidden;
 }

@@ -14,6 +14,7 @@ import java.util.List;
 public class CodeRunRequest {
     private String code;
     private String language;
+    private String questionId;
     private String input;
     private List<TestCaseDto> sampleTestCases;
 }

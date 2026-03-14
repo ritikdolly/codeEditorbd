@@ -20,5 +20,8 @@ public class QuestionRequestDto {
     private String inputFormat;
     private String outputFormat;
     private String constraints;
+    private String prefixCode;
+    private String suffixCode;
+    private String templateCode;
     private List<TestCaseDto> testCases;
 }
